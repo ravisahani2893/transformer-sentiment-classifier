@@ -9,7 +9,7 @@ class SentimentDataset(Dataset):
         word2idx: dictionary mapping words to indices
         seq_len: fixed input length
         """
-
+        print("Init called")
         self.sentences = [d[0] for d in data]
         self.labels = [d[1] for d in data]
 
@@ -20,7 +20,7 @@ class SentimentDataset(Dataset):
         """
         Convert sentence -> list of token ids
         """
-
+        print("Encode called")
         tokens = sentence.lower().split()
 
         ids = [self.word2idx.get(w, 0) for w in tokens]
@@ -41,44 +41,3 @@ class SentimentDataset(Dataset):
         y = torch.tensor(self.labels[idx])
 
         return x, y
-
-data = [
-    ("I love this movie", 1),
-    ("This film is terrible", 0),
-    ("I hate this movie", 0)
-]
-data
-
-# Build vocabulary
-sentences = [d[0] for d in data]
-sentences
-words = set(" ".join(sentences).lower().split())
-words
-word2idx = {w: i+1 for i, w in enumerate(words)}
-
-print("Vocabulary:", word2idx)
-
-# Create dataset
-dataset = SentimentDataset(data, word2idx, seq_len=10)
-
-print("\nDataset size:", len(dataset))
-
-# Get first sample
-x, y = dataset[0]
-
-print("\nFirst sample input:", x)
-print("First sample label:", y)
-
-print("\nInput shape:", x.shape)
-print("Label shape:", y.shape)
-
-# Inspect multiple samples
-print("\nAll samples:\n")
-
-for i in range(len(dataset)):
-    x, y = dataset[i]
-    print(f"Sample {i}")
-    print("Input:", x)
-    print("Label:", y)
-    print("Shape:", x.shape)
-    print()    

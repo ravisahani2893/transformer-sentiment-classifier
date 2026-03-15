@@ -1,0 +1,6 @@
+I love this movie,positive
+This movie is amazing,positive
+I really enjoyed this film,positive
+This film is terrible,negative
+I hate this movie,negative
+This movie is boring,negative
