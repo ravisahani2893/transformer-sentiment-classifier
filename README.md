@@ -8,10 +8,12 @@ A from-scratch implementation of a Transformer encoder for binary sentiment clas
 
 ```
 transformer-sentiment-classifier/
-├── dataset.py   # Tokenization, encoding, and PyTorch Dataset
-├── model.py     # Full Transformer architecture (Attention, Encoder, Classifier)
-├── train.py     # Training loop, optimizer, loss, attention visualization
-└── predict.py   # (placeholder for standalone inference)
+├── dataset.py    # Tokenization, encoding, and PyTorch Dataset
+├── model.py      # Transformer architecture (Attention, Encoder, Classifier)
+├── baselines.py  # Baseline models (Bag-of-Words, CNN)
+├── train.py      # Train Transformer only + attention visualization
+├── compare.py    # Train all 3 models and compare side-by-side
+└── predict.py    # (placeholder for standalone inference)
 ```
 
 ---
@@ -24,7 +26,7 @@ transformer-sentiment-classifier/
 pip install torch matplotlib seaborn
 ```
 
-### 2. Train and predict
+### 2. Train Transformer only
 
 ```bash
 python train.py
@@ -35,6 +37,18 @@ This will:
 - Print loss per epoch
 - Run predictions on 4 test sentences
 - Display an attention heatmap for each prediction
+
+### 3. Compare all 3 models
+
+```bash
+python compare.py
+```
+
+This will:
+- Train all three models (BoW, CNN, Transformer) on the same data
+- Print accuracy for each model side-by-side
+- Run predictions on 6 unseen sentences from all 3 models
+- Save a loss curve comparison plot → `loss_comparison.png`
 
 ---
 
@@ -61,6 +75,64 @@ Linear Classifier  →  64 → 2 logits                     shape: (batch, 2)
    ↓
 Prediction: Positive / Negative
 ```
+
+---
+
+## Model Comparison
+
+| Model | Sees Word Order? | Captures Local Patterns? | Global Context? | Parameters |
+|-------|:---:|:---:|:---:|:---:|
+| **Bag-of-Words** | ❌ | ❌ | ❌ | Fewest |
+| **CNN** | Partial ✅ | ✅ | ❌ | Medium |
+| **Transformer** | ✅ | ✅ | ✅ | Most |
+
+### Bag-of-Words (`BoWClassifier`)
+
+The simplest possible baseline. Converts every sentence into one vector by **averaging all word embeddings**, then feeds it through a linear classifier.
+
+```
+"I love this movie"   →   avg([I], [love], [this], [movie])   →   [one vector]   →   Positive
+"movie this love I"   →   avg([movie], [this], [love], [I])   →   [same vector]  →   Positive
+```
+
+Word order is completely invisible. Both sentences look identical. Despite this, it can still learn that sentences containing "love/amazing/great" are positive and "terrible/hate/awful" are negative — because those words appear in the average.
+
+**When it works:** Short, keyword-heavy text where word order doesn't matter.
+**When it fails:** "not bad", "I thought I would hate it but loved it" — negation and structure are lost.
+
+---
+
+### CNN Text Classifier (`CNNClassifier`)
+
+Uses convolutional filters to detect **local n-gram patterns**. A filter of size 3 slides across the sentence and learns to fire on specific 3-word combinations.
+
+```
+"I love this movie"
+  └── bigrams:   "I love", "love this", "this movie"
+  └── trigrams:  "I love this", "love this movie"
+  └── 4-grams:   "I love this movie"
+```
+
+Multiple filter sizes (2, 3, 4) run in parallel, each capturing different window sizes. Max-pooling then picks the strongest signal from each filter across the whole sentence.
+
+```
+Conv filters (kernel=2,3,4)
+      ↓
+Max Pool → "Did this pattern appear ANYWHERE?"
+      ↓
+Concatenate → Linear → Prediction
+```
+
+**Better than BoW because:** Captures "not bad" as a pattern (2-gram).
+**Worse than Transformer because:** Only sees a window of 2-4 words, not the whole sentence at once.
+
+---
+
+### Transformer (`TransformerClassifier`)
+
+Every token attends to every other token simultaneously. No fixed window size. The word "not" in "not bad" can attend to "bad" even if they're far apart.
+
+See the full walkthrough below.
 
 ---
 
@@ -385,6 +457,41 @@ After fc_out:                 (2,  2)      ← logits: [neg_score, pos_score]
 | **CrossEntropyLoss** | Penalizes confident wrong predictions more than uncertain ones |
 | **Backpropagation** | Chain rule applied across the whole graph to compute all gradients |
 | **Adam** | Adaptive optimizer — adjusts learning rate per parameter using momentum |
+
+---
+
+## `baselines.py` — Baseline Models
+
+### `BoWClassifier`
+
+```python
+def forward(self, x):
+    embedded = self.embedding(x)       # (N, seq_len, 64)
+    pooled   = embedded.mean(dim=1)    # (N, 64)  ← average, order lost
+    return self.fc(pooled)             # (N, 2)
+```
+
+The entire model in 3 lines. The `mean(dim=1)` is where all word order disappears.
+
+### `CNNClassifier`
+
+```python
+def forward(self, x):
+    embedded = self.embedding(x)               # (N, seq_len, 64)
+    embedded = embedded.permute(0, 2, 1)       # (N, 64, seq_len) ← Conv1d expects this
+    for conv in self.convs:                    # one conv per kernel size
+        c = torch.relu(conv(embedded))         # (N, filters, seq_len - k + 1)
+        p = c.max(dim=2).values                # (N, filters) ← strongest signal
+        pooled_outputs.append(p)
+    out = torch.cat(pooled_outputs, dim=1)     # (N, filters × 3)
+    return self.fc(out)                        # (N, 2)
+```
+
+**Why `permute(0, 2, 1)`?**
+`nn.Conv1d` expects shape `(N, channels, length)` but embeddings come as `(N, length, channels)`. Permute swaps the last two dims to match what Conv1d needs.
+
+**Why `max(dim=2)`?**
+After the conv slides across the sequence, we get one activation per position. Max pooling picks the highest value — asking *"did this pattern appear anywhere?"* — and discards position info.
 
 ---
 

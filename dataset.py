@@ -9,7 +9,6 @@ class SentimentDataset(Dataset):
         word2idx: dictionary mapping words to indices
         seq_len: fixed input length
         """
-        print("Init called")
         self.sentences = [d[0] for d in data]
         self.labels = [d[1] for d in data]
 
@@ -20,7 +19,6 @@ class SentimentDataset(Dataset):
         """
         Convert sentence -> list of token ids
         """
-        print("Encode called")
         tokens = sentence.lower().split()
 
         ids = [self.word2idx.get(w, 0) for w in tokens]
